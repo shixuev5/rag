@@ -1,13 +1,11 @@
+from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import numpy as np
 from pymilvus import connections, Collection, CollectionSchema, FieldSchema, DataType, utility
 from rank_bm25 import BM25Okapi
 from langchain.schema import Document
-
-from src.retrievers.base import BaseRetriever
-from src.models.client import ModelClient
-from src.config.settings import (
+from services.model_service import ModelClient
+from config.settings import (
     MILVUS_HOST,
     MILVUS_PORT,
     COLLECTION_NAME,
@@ -15,7 +13,29 @@ from src.config.settings import (
     DEFAULT_VECTOR_WEIGHT
 )
 
-class HybridRetriever(BaseRetriever):
+class VectorStore(ABC):
+    """向量存储基类"""
+    
+    @abstractmethod
+    def add_documents(self, documents: List[Document]) -> None:
+        """添加文档到向量存储"""
+        pass
+    
+    @abstractmethod
+    def search(self,
+              query: str,
+              limit: int,
+              metadata_filters: Optional[Dict[str, Any]] = None,
+              **kwargs) -> List[Dict]:
+        """搜索文档"""
+        pass
+    
+    @abstractmethod
+    def delete(self, document_ids: List[str]) -> None:
+        """删除文档"""
+        pass 
+
+class MilvusVectorStore(VectorStore):
     def __init__(self):
         self.model_client = ModelClient()
         self._connect_milvus()
@@ -47,7 +67,7 @@ class HybridRetriever(BaseRetriever):
 
         schema = CollectionSchema(
             fields=fields,
-            description="Document collection for hybrid search"
+            description="Markdown documents collection"
         )
 
         if utility.has_collection(COLLECTION_NAME):
@@ -63,7 +83,7 @@ class HybridRetriever(BaseRetriever):
         self.collection.create_index(field_name="vector", index_params=index_params)
 
     def add_documents(self, documents: List[Document]) -> None:
-        """添加文档到检索器"""
+        """添加文档到向量存储"""
         if not documents:
             return
 
@@ -99,7 +119,7 @@ class HybridRetriever(BaseRetriever):
 
     def search(self,
               query: str,
-              limit: int,
+              limit: int = 5,
               metadata_filters: Optional[Dict[str, Any]] = None,
               use_hybrid: bool = True,
               vector_weight: float = DEFAULT_VECTOR_WEIGHT) -> List[Dict]:
@@ -182,4 +202,9 @@ class HybridRetriever(BaseRetriever):
                 "modified_at": datetime.fromtimestamp(hit.entity.get("modified_at", 0)),
                 "score": hit.score
             })
-        return formatted_hits 
+        return formatted_hits
+
+    def delete(self, document_ids: List[str]) -> None:
+        """删除文档"""
+        expr = f"id in {document_ids}"
+        self.collection.delete(expr) 

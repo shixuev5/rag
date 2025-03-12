@@ -5,8 +5,11 @@ import logging
 from datetime import datetime
 
 from .schemas import *
-from src.retrievers.hybrid_retriever import HybridRetriever
-from src.config.settings import (
+from core.document import MarkdownProcessor
+from core.vector_store import MilvusVectorStore
+from core.ranker import Reranker
+from utils.filters import parse_metadata_filters
+from config.settings import (
     ERROR_CODES,
     VECTORIZE_BATCH_SIZE
 )
@@ -32,7 +35,9 @@ app.add_middleware(
 )
 
 # 全局变量
-retriever = HybridRetriever()
+doc_processor = MarkdownProcessor()
+vector_store = MilvusVectorStore()
+reranker = Reranker()
 
 @app.post("/vectorize", response_model=VectorizeResponse)
 async def vectorize_texts(request: VectorizeRequest):
@@ -47,7 +52,7 @@ async def vectorize_texts(request: VectorizeRequest):
         vectors = []
         for i in range(0, len(request.texts), batch_size):
             batch = request.texts[i:i + batch_size]
-            batch_vectors = retriever.model_client.get_embeddings(batch)
+            batch_vectors = vector_store.model_client.get_embeddings(batch)
             vectors.extend(batch_vectors)
         
         response = VectorizeResponse(
@@ -72,53 +77,43 @@ async def vectorize_texts(request: VectorizeRequest):
 async def retrieve_documents(request: RetrievalRequest):
     """文档检索接口"""
     try:
-        logger.info(f"Processing retrieval request for knowledge_id: {request.knowledge_id}")
+        logger.info(f"Processing retrieval request: {request.query}")
         
-        # 验证知识库是否存在
-        if not retriever.knowledge_exists(request.knowledge_id):
-            raise HTTPException(
-                status_code=404,
-                detail=ErrorResponse(
-                    error_code=2001,
-                    error_msg=ERROR_CODES[2001]
-                ).dict()
-            )
+        # 解析过滤条件
+        filters = parse_metadata_filters(request.filter_str) if request.filter_str else None
         
-        # 执行检索
-        results = retriever.search(
+        # 执行初始检索
+        initial_results = vector_store.search(
             query=request.query,
-            limit=request.retrieval_setting.top_k,
-            metadata_filters={"knowledge_id": request.knowledge_id},
-            score_threshold=request.retrieval_setting.score_threshold
+            limit=request.limit * 2 if request.rerank else request.limit,
+            metadata_filters=filters,
+            use_hybrid=request.use_hybrid,
+            vector_weight=request.vector_weight
         )
         
-        # 转换为API响应格式
-        records = []
-        for result in results:
-            metadata = RecordMetadata(
-                source=result["source"],
-                created_at=result["created_at"].timestamp(),
-                modified_at=result["modified_at"].timestamp(),
-                extra={
-                    "file_type": result["file_type"],
-                    "file_name": result["file_name"]
-                }
-            )
-            
-            record = RetrievalRecord(
-                content=result["content"],
-                score=result["score"],
-                title=result.get("title", ""),
-                metadata=metadata
-            )
-            records.append(record)
+        # 执行重排序（如果启用）
+        results = reranker.rerank(request.query, initial_results, request.limit) if request.rerank else initial_results[:request.limit]
         
-        response = RetrievalResponse(records=records)
-        logger.info(f"Retrieval completed with {len(records)} results")
+        response = RetrievalResponse(
+            results=[
+                SearchResult(
+                    content=hit["content"],
+                    source=hit["source"],
+                    file_name=hit["file_name"],
+                    file_type=hit["file_type"],
+                    title=hit["title"],
+                    created_at=hit["created_at"],
+                    modified_at=hit["modified_at"],
+                    score=hit["score"],
+                    original_score=hit.get("original_score")
+                )
+                for hit in results
+            ]
+        )
+        
+        logger.info(f"Retrieval completed with {len(results)} results")
         return response
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Retrieval failed: {str(e)}")
         raise HTTPException(
