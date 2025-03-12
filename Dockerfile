@@ -5,6 +5,7 @@ WORKDIR /app
 
 # 复制项目文件
 COPY requirements.txt .
+COPY .env.example .env
 COPY src/ src/
 
 # 安装依赖

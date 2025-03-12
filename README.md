@@ -11,16 +11,14 @@
 - 元数据过滤：支持基于文档元数据的过滤
 - 批量处理：支持批量文档处理
 - 可扩展性：模块化设计，易于扩展
-- 容器化部署：支持 Docker 容器化部署
+- 灵活配置：支持通过环境变量和配置文件进行配置
 
 ## 系统要求
 
-- Docker 和 Docker Compose
-- 或者：
-  - Python 3.8+
-  - Milvus 2.3+
-  - BGE-M3 模型服务
-  - BGE-Reranker-V2-M3 模型服务
+- Python 3.8+
+- Milvus 2.3+
+- BGE-M3 模型服务
+- BGE-Reranker-V2-M3 模型服务
 
 ## 部署方式
 
@@ -38,13 +36,31 @@ pip install -r requirements.txt
 ```
 
 3. 配置环境：
-   - 确保 Milvus 服务已启动
-   - 确保模型服务已启动并可访问
-   - 根据需要修改 `src/config/settings.py` 中的配置
+```bash
+cp .env.example .env
+# 编辑 .env 文件，根据需要修改配置
+```
 
 4. 启动服务：
 ```bash
 python src/main_api.py
+```
+
+### Docker 部署
+
+1. 构建镜像：
+```bash
+docker build -t rag-api .
+```
+
+2. 运行容器：
+```bash
+docker run -d \
+  --name rag-api \
+  -p 8000:8000 \
+  -e MILVUS_HOST=your-milvus-host \
+  -e MODEL_SERVICE_HOST=your-model-service-host \
+  rag-api
 ```
 
 ## API 使用示例
@@ -77,38 +93,41 @@ curl -X POST "http://localhost:8000/retrieval" \
 
 ### 环境变量
 
-容器化部署时可以通过环境变量配置：
+系统支持通过环境变量或 `.env` 文件进行配置。主要配置项包括：
 
-- `MILVUS_HOST`: Milvus 服务地址
-- `MILVUS_PORT`: Milvus 服务端口
-- `MODEL_SERVICE_HOST`: 模型服务地址
-- `MODEL_SERVICE_PORT`: 模型服务端口
+#### Milvus配置
+- `MILVUS_HOST`: Milvus 服务地址（默认：localhost）
+- `MILVUS_PORT`: Milvus 服务端口（默认：19530）
+- `COLLECTION_NAME`: 集合名称（默认：markdown_docs）
 
-### 配置文件
+#### 文档处理配置
+- `CHUNK_SIZE`: 文档分块大小（默认：500）
+- `CHUNK_OVERLAP`: 分块重叠大小（默认：50）
 
-主要配置项（`src/config/settings.py`）：
+#### 检索配置
+- `INITIAL_RETRIEVAL_SIZE`: 初始检索数量（默认：10）
+- `FINAL_RETRIEVAL_SIZE`: 重排序后返回数量（默认：5）
+- `DEFAULT_VECTOR_WEIGHT`: 向量检索权重（默认：0.7）
 
-```python
-# Milvus配置
-MILVUS_HOST = "localhost"
-MILVUS_PORT = 19530
+#### 模型配置
+- `EMBEDDING_MODEL_NAME`: 向量化模型名称（默认：bge-m3）
+- `RERANK_MODEL_NAME`: 重排序模型名称（默认：bge-reranker-v2-m3）
 
-# 模型服务配置
-MODEL_SERVICE = {
-    "HOST": "localhost",
-    "PORT": 8080,
-    "EMBEDDING_PATH": "/v1/embeddings",
-    "RERANK_PATH": "/v1/rerank",
-    "TIMEOUT": 30,
-}
+#### 模型服务配置
+- `MODEL_SERVICE_HOST`: 模型服务地址（默认：localhost）
+- `MODEL_SERVICE_PORT`: 模型服务端口（默认：8080）
+- `MODEL_SERVICE_EMBEDDING_PATH`: 向量化接口路径（默认：/v1/embeddings）
+- `MODEL_SERVICE_RERANK_PATH`: 重排序接口路径（默认：/v1/rerank）
+- `MODEL_SERVICE_TIMEOUT`: 请求超时时间（默认：30秒）
 
-# API服务配置
-API_SETTINGS = {
-    "HOST": "0.0.0.0",
-    "PORT": 8000,
-    "WORKERS": 4
-}
-```
+#### API服务配置
+- `API_HOST`: API服务地址（默认：0.0.0.0）
+- `API_PORT`: API服务端口（默认：8000）
+- `API_WORKERS`: 工作进程数（默认：4）
+- `API_DEBUG`: 调试模式（默认：true）
+
+#### 批处理设置
+- `VECTORIZE_BATCH_SIZE`: 向量化批处理大小（默认：32）
 
 ## 开发说明
 
@@ -136,10 +155,10 @@ src/
 1. 向量维度：BGE-M3 模型输出的向量维度为 1024
 2. 模型服务：需要确保 BGE-M3 和 BGE-Reranker-V2-M3 模型服务正常运行
 3. 内存使用：注意监控 Milvus 的内存使用情况，特别是在处理大量文档时
-4. 容器化部署：
-   - 首次启动时，Milvus 可能需要一些时间初始化
-   - 确保为容器分配足够的内存
-   - 在生产环境中，建议为 Milvus 配置持久化存储
+4. 部署说明：
+   - 确保 Milvus 服务已正确配置并可访问
+   - 确保模型服务已正确部署并可访问
+   - 根据实际环境修改相关配置参数
 
 ## 许可证
 
