@@ -1,5 +1,5 @@
 from typing import List, Dict
-from services.model_service import ModelClient
+from models.client import ModelClient
 from config.settings import FINAL_RETRIEVAL_SIZE
 
 class Reranker:

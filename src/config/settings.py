@@ -16,8 +16,8 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME", "markdown_docs")
 VECTOR_DIM = 1024  # BGE-M3 模型的向量维度
 
 # 文档处理配置
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
 
 # 检索配置
 INITIAL_RETRIEVAL_SIZE = int(os.getenv("INITIAL_RETRIEVAL_SIZE", "10"))  # 初始检索数量
@@ -34,6 +34,7 @@ MODEL_SERVICE = {
     "PORT": int(os.getenv("MODEL_SERVICE_PORT", "8080")),
     "EMBEDDING_PATH": os.getenv("MODEL_SERVICE_EMBEDDING_PATH", "/v1/embeddings"),
     "RERANK_PATH": os.getenv("MODEL_SERVICE_RERANK_PATH", "/v1/rerank"),
+    "CHAT_PATH": os.getenv("MODEL_SERVICE_CHAT_PATH", "/v1/chat"),
     "TIMEOUT": int(os.getenv("MODEL_SERVICE_TIMEOUT", "30")),
 }
 
@@ -44,9 +45,6 @@ API_SETTINGS = {
     "WORKERS": int(os.getenv("API_WORKERS", "4")),
     "DEBUG": os.getenv("API_DEBUG", "true").lower() == "true"
 }
-
-# 批处理设置
-VECTORIZE_BATCH_SIZE = int(os.getenv("VECTORIZE_BATCH_SIZE", "32"))
 
 # 错误码定义
 ERROR_CODES = {

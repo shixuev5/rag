@@ -126,9 +126,6 @@ curl -X POST "http://localhost:8000/retrieval" \
 - `API_WORKERS`: 工作进程数（默认：4）
 - `API_DEBUG`: 调试模式（默认：true）
 
-#### 批处理设置
-- `VECTORIZE_BATCH_SIZE`: 向量化批处理大小（默认：32）
-
 ## 开发说明
 
 项目结构：

@@ -2,15 +2,16 @@ from typing import List, Dict, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 
-class VectorizeRequest(BaseModel):
-    """文档向量化请求"""
-    texts: List[str] = Field(..., description="待向量化的文本列表")
+class CreateDocumentRequest(BaseModel):
+    """创建文档请求"""
+    texts: List[str] = Field(..., description="文档内容列表")
+    metadata: Optional[List[Dict]] = Field(None, description="文档元数据列表")
     batch_size: Optional[int] = Field(32, description="批处理大小")
 
-class VectorizeResponse(BaseModel):
-    """文档向量化响应"""
-    vectors: List[List[float]] = Field(..., description="向量化结果")
-    dimensions: int = Field(..., description="向量维度")
+class CreateDocumentResponse(BaseModel):
+    """创建文档响应"""
+    message: str = Field("success", description="处理结果消息")
+    data: Dict = Field(..., description="处理结果数据")
 
 class SearchResult(BaseModel):
     """搜索结果"""

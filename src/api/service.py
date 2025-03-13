@@ -3,15 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import logging
 from datetime import datetime
+from langchain.schema import Document
 
 from .schemas import *
-from core.document import MarkdownProcessor
 from core.vector_store import MilvusVectorStore
 from core.ranker import Reranker
 from utils.filters import parse_metadata_filters
 from config.settings import (
-    ERROR_CODES,
-    VECTORIZE_BATCH_SIZE
+    ERROR_CODES
 )
 
 # 配置日志
@@ -35,36 +34,35 @@ app.add_middleware(
 )
 
 # 全局变量
-doc_processor = MarkdownProcessor()
 vector_store = MilvusVectorStore()
 reranker = Reranker()
 
-@app.post("/vectorize", response_model=VectorizeResponse)
-async def vectorize_texts(request: VectorizeRequest):
-    """文本向量化接口"""
+@app.post("/documents", response_model=CreateDocumentResponse)
+async def create_documents(request: CreateDocumentRequest):
+    """添加文档接口"""
     try:
-        logger.info(f"Processing vectorization request with {len(request.texts)} texts")
+        logger.info(f"Processing document creation request with {len(request.texts)} texts")
         
-        # 使用请求中的batch_size或默认值
-        batch_size = request.batch_size or VECTORIZE_BATCH_SIZE
+        # 创建文档对象列表
+        documents = []
+        for i, text in enumerate(request.texts):
+            metadata = request.metadata[i] if request.metadata and i < len(request.metadata) else {}
+            doc = Document(page_content=text, metadata=metadata)
+            documents.append(doc)
         
-        # 批量处理文本向量化
-        vectors = []
-        for i in range(0, len(request.texts), batch_size):
-            batch = request.texts[i:i + batch_size]
-            batch_vectors = vector_store.model_client.get_embeddings(batch)
-            vectors.extend(batch_vectors)
+        # 添加文档到向量存储
+        vector_store.add_documents(documents)
         
-        response = VectorizeResponse(
-            vectors=vectors,
-            dimensions=len(vectors[0]) if vectors else 0
+        response = CreateDocumentResponse(
+            message="success",
+            data={"document_count": len(documents)}
         )
         
-        logger.info(f"Vectorization completed with {len(vectors)} vectors")
+        logger.info(f"Documents creation completed with {len(documents)} documents")
         return response
         
     except Exception as e:
-        logger.error(f"Vectorization failed: {str(e)}")
+        logger.error(f"Documents creation failed: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=ErrorResponse(
