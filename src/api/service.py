@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
 import logging
 from datetime import datetime
 from langchain.schema import Document
@@ -8,7 +7,7 @@ from langchain.schema import Document
 from .schemas import *
 from core.vector_store import MilvusVectorStore
 from core.ranker import Reranker
-from utils.filters import parse_metadata_filters
+from core.retriever import Retriever
 from config.settings import (
     ERROR_CODES
 )
@@ -36,6 +35,7 @@ app.add_middleware(
 # 全局变量
 vector_store = MilvusVectorStore()
 reranker = Reranker()
+retriever = Retriever(vector_store, reranker)
 
 @app.post("/documents", response_model=CreateDocumentResponse)
 async def create_documents(request: CreateDocumentRequest):
@@ -73,43 +73,50 @@ async def create_documents(request: CreateDocumentRequest):
 
 @app.post("/retrieval", response_model=RetrievalResponse)
 async def retrieve_documents(request: RetrievalRequest):
-    """文档检索接口"""
+    """文档检索接口
+    
+    Args:
+        request: 检索请求，包含以下参数：
+            - query: 搜索查询
+            - limit: 返回结果数量限制
+            - filter_str: 元数据过滤条件字符串
+            - rerank: 是否启用重排序
+            - include_parent_doc: 是否包含父文档信息
+            - dense_weight: 稠密向量权重 (0-1)
+            - sparse_weight: 稀疏向量权重 (0-1)
+    """
     try:
-        logger.info(f"Processing retrieval request: {request.query}")
-        
-        # 解析过滤条件
-        filters = parse_metadata_filters(request.filter_str) if request.filter_str else None
-        
-        # 执行初始检索
-        initial_results = vector_store.search(
+        # 使用 Retriever 执行检索
+        results = retriever.retrieve(
             query=request.query,
-            limit=request.limit * 2 if request.rerank else request.limit,
-            metadata_filters=filters,
-            use_hybrid=request.use_hybrid,
-            vector_weight=request.vector_weight
+            limit=request.limit,
+            filter_str=request.filter_str,
+            rerank=request.rerank,
+            include_parent_doc=request.include_parent_doc,
+            dense_weight=request.dense_weight,
+            sparse_weight=request.sparse_weight
         )
         
-        # 执行重排序（如果启用）
-        results = reranker.rerank(request.query, initial_results, request.limit) if request.rerank else initial_results[:request.limit]
+        # 转换结果为响应格式
+        response_results = []
+        for result in results:
+            chunk = result["chunk"]
+            
+            response_results.append(
+                SearchResult(
+                    content=chunk["content"],
+                    score=chunk["score"],
+                    dense_score=chunk.get("dense_score"),
+                    sparse_score=chunk.get("sparse_score"),
+                    chunk_index=chunk.get("chunk_index", 0)
+                )
+            )
         
         response = RetrievalResponse(
-            results=[
-                SearchResult(
-                    content=hit["content"],
-                    source=hit["source"],
-                    file_name=hit["file_name"],
-                    file_type=hit["file_type"],
-                    title=hit["title"],
-                    created_at=hit["created_at"],
-                    modified_at=hit["modified_at"],
-                    score=hit["score"],
-                    original_score=hit.get("original_score")
-                )
-                for hit in results
-            ]
+            results=response_results
         )
         
-        logger.info(f"Retrieval completed with {len(results)} results")
+        logger.info(f"Retrieval completed with {len(response_results)} results")
         return response
         
     except Exception as e:

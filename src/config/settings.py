@@ -1,28 +1,17 @@
-from pathlib import Path
 import os
 from dotenv import load_dotenv
 
 # 加载环境变量
 load_dotenv()
 
-# 路径配置
-ROOT_DIR = Path(__file__).parent.parent.parent
-DATA_DIR = ROOT_DIR / "data"
-
 # Milvus配置
 MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
 MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "markdown_docs")
 VECTOR_DIM = 1024  # BGE-M3 模型的向量维度
 
 # 文档处理配置
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
-
-# 检索配置
-INITIAL_RETRIEVAL_SIZE = int(os.getenv("INITIAL_RETRIEVAL_SIZE", "10"))  # 初始检索数量
-FINAL_RETRIEVAL_SIZE = int(os.getenv("FINAL_RETRIEVAL_SIZE", "5"))      # 重排序后返回数量
-DEFAULT_VECTOR_WEIGHT = float(os.getenv("DEFAULT_VECTOR_WEIGHT", "0.7")) # 向量检索权重
 
 # 模型配置
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "bge-m3")

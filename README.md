@@ -98,16 +98,10 @@ curl -X POST "http://localhost:8000/retrieval" \
 #### Milvus配置
 - `MILVUS_HOST`: Milvus 服务地址（默认：localhost）
 - `MILVUS_PORT`: Milvus 服务端口（默认：19530）
-- `COLLECTION_NAME`: 集合名称（默认：markdown_docs）
 
 #### 文档处理配置
 - `CHUNK_SIZE`: 文档分块大小（默认：500）
 - `CHUNK_OVERLAP`: 分块重叠大小（默认：50）
-
-#### 检索配置
-- `INITIAL_RETRIEVAL_SIZE`: 初始检索数量（默认：10）
-- `FINAL_RETRIEVAL_SIZE`: 重排序后返回数量（默认：5）
-- `DEFAULT_VECTOR_WEIGHT`: 向量检索权重（默认：0.7）
 
 #### 模型配置
 - `EMBEDDING_MODEL_NAME`: 向量化模型名称（默认：bge-m3）

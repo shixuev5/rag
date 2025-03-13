@@ -1,6 +1,5 @@
 from typing import List, Dict
 from models.client import ModelClient
-from config.settings import FINAL_RETRIEVAL_SIZE
 
 class Reranker:
     """重排序器"""
@@ -8,7 +7,7 @@ class Reranker:
     def __init__(self):
         self.model_client = ModelClient()
         
-    def rerank(self, query: str, results: List[Dict], limit: int = FINAL_RETRIEVAL_SIZE) -> List[Dict]:
+    def rerank(self, query: str, results: List[Dict], limit: int = 5) -> List[Dict]:
         """对检索结果进行重排序"""
         if not results:
             return []
