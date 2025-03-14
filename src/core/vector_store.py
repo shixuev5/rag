@@ -9,7 +9,6 @@ from config.settings import (
     MILVUS_HOST,
     MILVUS_PORT,
     VECTOR_DIM,
-    DEFAULT_VECTOR_WEIGHT,
     CHUNK_SIZE,
     CHUNK_OVERLAP
 )
@@ -95,10 +94,11 @@ class MilvusVectorStore(VectorStore):
             document_fields = [
                 FieldSchema(name="id", dtype=DataType.VARCHAR, max_length=64, is_primary=True),
                 FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=65535),
-                FieldSchema(name="chunks", dtype=DataType.ARRAY, element_type=DataType.VARCHAR, max_capacity=1024),
+                FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=VECTOR_DIM),  # 添加文档向量字段
+                FieldSchema(name="chunks", dtype=DataType.ARRAY, element_type=DataType.VARCHAR, max_capacity=1024, max_length=64),  # 添加 max_length 参数
                 FieldSchema(name="metadata", dtype=DataType.JSON),
                 FieldSchema(name="created_at", dtype=DataType.DOUBLE),
-                FieldSchema(name="modified_at", dtype=DataType.DOUBLE)
+                FieldSchema(name="modified_at", dtype=DataType.DOUBLE),
             ]
 
             # 文档块集合字段
@@ -135,6 +135,13 @@ class MilvusVectorStore(VectorStore):
                     schema=document_schema,
                     using='default'
                 )
+                # 为新创建的文档集合创建向量索引
+                doc_index_params = {
+                    "metric_type": "IP",
+                    "index_type": "IVF_FLAT",
+                    "params": {"nlist": 1024}
+                }
+                self.documents_collection.create_index(field_name="embedding", index_params=doc_index_params)
 
             if utility.has_collection(CHUNKS_COLLECTION_NAME):
                 self.chunks_collection = Collection(CHUNKS_COLLECTION_NAME)
@@ -151,6 +158,14 @@ class MilvusVectorStore(VectorStore):
                     "params": {"nlist": 1024}
                 }
                 self.chunks_collection.create_index(field_name="dense", index_params=index_params)
+                
+                # 为稀疏向量字段创建索引
+                sparse_index_params = {
+                    "metric_type": "IP",
+                    "index_type": "SPARSE_INVERTED_INDEX",  # 使用稀疏向量专用的索引类型
+                    "params": {}
+                }
+                self.chunks_collection.create_index(field_name="sparse_bm25", index_params=sparse_index_params)
 
             # 加载集合
             self.documents_collection.load()
@@ -196,7 +211,8 @@ class MilvusVectorStore(VectorStore):
                     chunk_ids.append(chunk_id)
                     
                     # 获取分块向量
-                    chunk_vector = self.model_client.get_embeddings([chunk])[0]
+                    dense_vector = self.model_client.get_embeddings([chunk], embedding_type="dense_vecs")[0]
+                    sparse_vector = self.model_client.get_embeddings([chunk], embedding_type="sparse_vecs")[0]
                     
                     # 生成主题概述
                     summary = self.model_client.summarize(chunk)
@@ -204,8 +220,8 @@ class MilvusVectorStore(VectorStore):
                     # 添加到实体列表
                     chunk_document_ids.append(doc_id)
                     chunk_contents.append(chunk)
-                    chunk_denses.append(chunk_vector)
-                    chunk_sparse_bm25.append([0.0] * VECTOR_DIM)  # 临时使用零向量，实际应该使用BM25向量
+                    chunk_denses.append(dense_vector)
+                    chunk_sparse_bm25.append(sparse_vector)
                     chunk_summaries.append(summary)
                     chunk_indices.append(i)
                     chunk_metadata_list.append(doc.metadata)
@@ -229,19 +245,21 @@ class MilvusVectorStore(VectorStore):
                 document_entity = {
                     "id": doc_id,
                     "content": doc.page_content,
+                    "embedding": [0.0] * VECTOR_DIM,
                     "chunks": chunk_ids,
                     "metadata": doc.metadata,
                     "created_at": current_time,
-                    "modified_at": current_time
+                    "modified_at": current_time,
                 }
                 
                 self.documents_collection.insert([
                     [document_entity["id"]],
                     [document_entity["content"]],
+                    [document_entity["embedding"]],
                     [document_entity["chunks"]],
                     [document_entity["metadata"]],
                     [document_entity["created_at"]],
-                    [document_entity["modified_at"]]
+                    [document_entity["modified_at"]],
                 ])
                 
             # 刷新集合
@@ -443,7 +461,7 @@ class MilvusVectorStore(VectorStore):
             else:
                 # 使用参数化查询防止SQL注入
                 if isinstance(value, str):
-                    expressions.append(f"{field} == '{value.replace("'", "''")}'")
+                    expressions.append(f"{field} == '{value.replace(chr(39), chr(39)+chr(39))}'")
                 else:
                     expressions.append(f"{field} == {value}")
         return " and ".join(expressions)

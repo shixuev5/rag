@@ -1,15 +1,15 @@
 import requests
 from typing import List, Dict, Any
-from config.settings import MODEL_SERVICE
+from config.settings import (MODEL_SERVICE, EMBEDDING_MODEL_NAME, RERANK_MODEL_NAME)
 
 class ModelClient:
     """模型服务客户端"""
     
     def __init__(self):
-        self.base_url = f"https://{MODEL_SERVICE['HOST']}:{MODEL_SERVICE['PORT']}"
+        self.base_url = MODEL_SERVICE['BASE_URL']
         self.timeout = MODEL_SERVICE['TIMEOUT']
     
-    def get_embeddings(self, texts: List[str]) -> List[List[float]]:
+    def get_embeddings(self, texts: List[str], embedding_type: str = "dense_vecs") -> List[List[float]]:
         """获取文本向量表示
         
         Args:
@@ -23,11 +23,11 @@ class ModelClient:
         try:
             response = requests.post(
                 url,
-                json={"texts": texts},
-                timeout=self.timeout
+                json={"input": texts, "model": EMBEDDING_MODEL_NAME, "embedding_type": embedding_type, "max_length": 2048},
+                timeout=self.timeout,
             )
             response.raise_for_status()
-            return response.json()["embeddings"]
+            return [item["embedding"] for item in response.json()["data"]]
         except Exception as e:
             raise Exception(f"Embedding request failed: {str(e)}")
     

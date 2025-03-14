@@ -59,7 +59,7 @@ docker run -d \
   --name rag-api \
   -p 8000:8000 \
   -e MILVUS_HOST=your-milvus-host \
-  -e MODEL_SERVICE_HOST=your-model-service-host \
+  -e MODEL_SERVICE_BASE_URL=http://localhost:5000 \
   rag-api
 ```
 
@@ -108,8 +108,7 @@ curl -X POST "http://localhost:8000/retrieval" \
 - `RERANK_MODEL_NAME`: 重排序模型名称（默认：bge-reranker-v2-m3）
 
 #### 模型服务配置
-- `MODEL_SERVICE_HOST`: 模型服务地址（默认：localhost）
-- `MODEL_SERVICE_PORT`: 模型服务端口（默认：8080）
+- `MODEL_SERVICE_BASE_URL`: 模型服务地址（默认：http://localhost:5000）
 - `MODEL_SERVICE_EMBEDDING_PATH`: 向量化接口路径（默认：/v1/embeddings）
 - `MODEL_SERVICE_RERANK_PATH`: 重排序接口路径（默认：/v1/rerank）
 - `MODEL_SERVICE_TIMEOUT`: 请求超时时间（默认：30秒）

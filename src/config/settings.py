@@ -19,11 +19,10 @@ RERANK_MODEL_NAME = os.getenv("RERANK_MODEL_NAME", "bge-reranker-v2-m3")
 
 # 模型服务配置
 MODEL_SERVICE = {
-    "HOST": os.getenv("MODEL_SERVICE_HOST", "localhost"),
-    "PORT": int(os.getenv("MODEL_SERVICE_PORT", "8080")),
+    "BASE_URL": os.getenv("MODEL_SERVICE_BASE_URL", "http://localhost:5000"),
     "EMBEDDING_PATH": os.getenv("MODEL_SERVICE_EMBEDDING_PATH", "/v1/embeddings"),
     "RERANK_PATH": os.getenv("MODEL_SERVICE_RERANK_PATH", "/v1/rerank"),
-    "CHAT_PATH": os.getenv("MODEL_SERVICE_CHAT_PATH", "/v1/chat"),
+    "CHAT_PATH": os.getenv("MODEL_SERVICE_CHAT_PATH", "/v1/chat/completions"),
     "TIMEOUT": int(os.getenv("MODEL_SERVICE_TIMEOUT", "30")),
 }
 

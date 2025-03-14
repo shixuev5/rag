@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 设置环境变量
 ENV PYTHONPATH=/app
 ENV MILVUS_HOST=milvus
-ENV MODEL_SERVICE_HOST=model-service
+ENV MODEL_SERVICE_BASE_URL=http://localhost:5000
 
 # 暴露端口
 EXPOSE 8000
