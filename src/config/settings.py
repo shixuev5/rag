@@ -10,8 +10,8 @@ MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
 VECTOR_DIM = 1024  # BGE-M3 模型的向量维度
 
 # 文档处理配置
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "2000"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 
 # 模型配置
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "bge-m3")

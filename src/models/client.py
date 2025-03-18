@@ -1,4 +1,5 @@
 import requests
+import re
 from typing import List, Dict, Any
 from config.settings import (MODEL_SERVICE, EMBEDDING_MODEL_NAME, RERANK_MODEL_NAME)
 
@@ -72,24 +73,28 @@ class ModelClient:
         url = f"{self.base_url}{MODEL_SERVICE['CHAT_PATH']}"
         
         # 构建提示词
-        system_prompt = "你是一个专业的文本摘要助手。你的任务是生成一个极其简洁的摘要，要求：\n1. 摘要必须控制在50个token以内\n2. 保留原文最核心的观点\n3. 使用简洁的语言\n4. 确保语义完整"
+        system_prompt = "你是一个专业的技术文档摘要助手。你的任务是生成一个简洁摘要，要求：\n1. 摘要必须控制在200个字符以内\n2. 保留原文最核心的观点\n3. 使用简洁的语言\n4. 确保语义完整"
         
-        user_prompt = f"请为以下文本生成一个不超过50个token的极简摘要。注意：必须确保摘要简短精炼。\n\n{text}"
+        user_prompt = f"请为以下文本生成简洁摘要。\n\n{text}"
         
         try:
             response = requests.post(
                 url,
                 json={
+                    "model": "qwen2.5-coder",
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
                     "temperature": 0,
-                    "max_tokens": 50
+                    "stream": False,
                 },
                 timeout=self.timeout
             )
             response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"].strip()
+            content = response.json()["choices"][0]["message"]["content"].strip()
+            # 移除特定标记
+            content = re.sub(r"# 思考过程\n<\|thinking_start\|>[\s\S]*?<\|thinking_end\|>\n\n---\n", "", content)
+            return content.strip()
         except Exception as e:
             raise Exception(f"Summarize request failed: {str(e)}") 

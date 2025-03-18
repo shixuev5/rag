@@ -100,8 +100,8 @@ curl -X POST "http://localhost:8000/retrieval" \
 - `MILVUS_PORT`: Milvus 服务端口（默认：19530）
 
 #### 文档处理配置
-- `CHUNK_SIZE`: 文档分块大小（默认：500）
-- `CHUNK_OVERLAP`: 分块重叠大小（默认：50）
+- `CHUNK_SIZE`: 文档分块大小（默认：2000）
+- `CHUNK_OVERLAP`: 分块重叠大小（默认：200）
 
 #### 模型配置
 - `EMBEDDING_MODEL_NAME`: 向量化模型名称（默认：bge-m3）

@@ -1,8 +1,8 @@
-langchain==0.3.20
-pymilvus==2.5.5
-python-dotenv==1.0.1
-torch>=2.0.0
-fastapi==0.115.11
-uvicorn==0.34.0
-pydantic==2.10.6
-requests==2.32.3
+pymilvus>=2.3.0
+langchain>=0.1.0
+jieba>=0.42.1
+requests>=2.31.0
+python-dotenv>=1.0.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.4.2

@@ -5,6 +5,7 @@ from pymilvus import connections, Collection, CollectionSchema, FieldSchema, Dat
 from langchain.text_splitter import MarkdownTextSplitter
 from langchain.schema import Document
 from models.client import ModelClient
+from utils.text_preprocessor import TextPreprocessor
 from config.settings import (
     MILVUS_HOST,
     MILVUS_PORT,
@@ -65,6 +66,7 @@ class VectorStore(ABC):
 class MilvusVectorStore(VectorStore):
     def __init__(self):
         self.model_client = ModelClient()
+        self.text_preprocessor = TextPreprocessor()
         self._connect_milvus()
         self._init_collections()
 
@@ -94,7 +96,9 @@ class MilvusVectorStore(VectorStore):
             document_fields = [
                 FieldSchema(name="id", dtype=DataType.VARCHAR, max_length=64, is_primary=True),
                 FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=65535),
-                FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=VECTOR_DIM),  # 添加文档向量字段
+                FieldSchema(name="dense", dtype=DataType.FLOAT_VECTOR, dim=VECTOR_DIM),
+                FieldSchema(name="sparse", dtype=DataType.SPARSE_FLOAT_VECTOR),
+                FieldSchema(name="summary", dtype=DataType.VARCHAR, max_length=512),
                 FieldSchema(name="chunks", dtype=DataType.ARRAY, element_type=DataType.VARCHAR, max_capacity=1024, max_length=64),  # 添加 max_length 参数
                 FieldSchema(name="metadata", dtype=DataType.JSON),
                 FieldSchema(name="created_at", dtype=DataType.DOUBLE),
@@ -107,8 +111,8 @@ class MilvusVectorStore(VectorStore):
                 FieldSchema(name="document_id", dtype=DataType.VARCHAR, max_length=64),
                 FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=2048),
                 FieldSchema(name="dense", dtype=DataType.FLOAT_VECTOR, dim=VECTOR_DIM),
-                FieldSchema(name="sparse_bm25", dtype=DataType.SPARSE_FLOAT_VECTOR),
-                FieldSchema(name="summary", dtype=DataType.VARCHAR, max_length=128),
+                FieldSchema(name="sparse", dtype=DataType.SPARSE_FLOAT_VECTOR),
+                FieldSchema(name="summary", dtype=DataType.VARCHAR, max_length=512),
                 FieldSchema(name="chunk_index", dtype=DataType.INT64),
                 FieldSchema(name="metadata", dtype=DataType.JSON),
                 FieldSchema(name="created_at", dtype=DataType.DOUBLE)
@@ -136,12 +140,18 @@ class MilvusVectorStore(VectorStore):
                     using='default'
                 )
                 # 为新创建的文档集合创建向量索引
-                doc_index_params = {
+                doc_dense_index_params = {
                     "metric_type": "IP",
                     "index_type": "IVF_FLAT",
                     "params": {"nlist": 1024}
                 }
-                self.documents_collection.create_index(field_name="embedding", index_params=doc_index_params)
+                doc_sparse_index_params = {
+                    "metric_type": "IP",
+                    "index_type": "SPARSE_INVERTED_INDEX",
+                    "params": {}
+                }
+                self.documents_collection.create_index(field_name="dense", index_params=doc_dense_index_params)
+                self.documents_collection.create_index(field_name="sparse", index_params=doc_sparse_index_params)
 
             if utility.has_collection(CHUNKS_COLLECTION_NAME):
                 self.chunks_collection = Collection(CHUNKS_COLLECTION_NAME)
@@ -165,7 +175,7 @@ class MilvusVectorStore(VectorStore):
                     "index_type": "SPARSE_INVERTED_INDEX",  # 使用稀疏向量专用的索引类型
                     "params": {}
                 }
-                self.chunks_collection.create_index(field_name="sparse_bm25", index_params=sparse_index_params)
+                self.chunks_collection.create_index(field_name="sparse", index_params=sparse_index_params)
 
             # 加载集合
             self.documents_collection.load()
@@ -173,6 +183,31 @@ class MilvusVectorStore(VectorStore):
         except MilvusException as e:
             logger.error(f"Failed to initialize collections: {e}")
             raise
+
+    def _convert_to_sparse_matrix_format(self, sparse_vector):
+        """将稀疏向量转换为Milvus支持的格式
+        
+        Milvus期望的稀疏向量格式为：
+        {
+            "indices": [0, 2, 4],  # 非零元素的索引
+            "values": [0.1, -0.2, 0.4]  # 对应的非零值
+        }
+        """
+        if isinstance(sparse_vector, dict) and "indices" in sparse_vector and "values" in sparse_vector:
+            return sparse_vector
+            
+        # 如果是普通列表，转换为稀疏格式
+        indices = []
+        values = []
+        for idx, value in enumerate(sparse_vector):
+            if value != 0:
+                indices.append(idx)
+                values.append(float(value))
+                
+        return {
+            "indices": indices,
+            "values": values
+        }
 
     def add_documents(self, documents: List[Document]) -> None:
         """添加文档到向量存储"""
@@ -199,7 +234,7 @@ class MilvusVectorStore(VectorStore):
                 chunk_document_ids = []
                 chunk_contents = []
                 chunk_denses = []
-                chunk_sparse_bm25 = []
+                chunk_sparses = []
                 chunk_summaries = []
                 chunk_indices = []
                 chunk_metadata_list = []
@@ -212,7 +247,11 @@ class MilvusVectorStore(VectorStore):
                     
                     # 获取分块向量
                     dense_vector = self.model_client.get_embeddings([chunk], embedding_type="dense_vecs")[0]
-                    sparse_vector = self.model_client.get_embeddings([chunk], embedding_type="sparse_vecs")[0]
+                    
+                    # 预处理文本并获取稀疏向量
+                    processed_text = self.text_preprocessor.preprocess(chunk)
+                    sparse_vector = self.model_client.get_embeddings([processed_text], embedding_type="sparse_vecs")[0]
+                    sparse_vector = self._convert_to_sparse_matrix_format(sparse_vector)
                     
                     # 生成主题概述
                     summary = self.model_client.summarize(chunk)
@@ -221,7 +260,7 @@ class MilvusVectorStore(VectorStore):
                     chunk_document_ids.append(doc_id)
                     chunk_contents.append(chunk)
                     chunk_denses.append(dense_vector)
-                    chunk_sparse_bm25.append(sparse_vector)
+                    chunk_sparses.append(sparse_vector)
                     chunk_summaries.append(summary)
                     chunk_indices.append(i)
                     chunk_metadata_list.append(doc.metadata)
@@ -233,19 +272,31 @@ class MilvusVectorStore(VectorStore):
                     chunk_document_ids,
                     chunk_contents,
                     chunk_denses,
-                    chunk_sparse_bm25,
+                    chunk_sparses,
                     chunk_summaries,
                     chunk_indices,
                     chunk_metadata_list,
                     chunk_created_ats
                 ])
                 
+                # 合并所有 chunks 的摘要并生成文档摘要
+                all_chunk_summaries = "\n\n".join([chunk_summaries[i] for i in range(len(chunks))])
+
+                # 获取文档级别的向量
+                doc_dense_vector = self.model_client.get_embeddings([all_chunk_summaries], embedding_type="dense_vecs")[0]
+                doc_sparse_vector = self.model_client.get_embeddings([all_chunk_summaries], embedding_type="sparse_vecs")[0]
+
+                doc_summary = self.model_client.summarize(all_chunk_summaries)
+
                 # 保存原始文档
                 current_time = datetime.now().timestamp()
+                
                 document_entity = {
                     "id": doc_id,
                     "content": doc.page_content,
-                    "embedding": [0.0] * VECTOR_DIM,
+                    "dense": doc_dense_vector,
+                    "sparse": doc_sparse_vector,
+                    "summary": doc_summary,
                     "chunks": chunk_ids,
                     "metadata": doc.metadata,
                     "created_at": current_time,
@@ -255,7 +306,9 @@ class MilvusVectorStore(VectorStore):
                 self.documents_collection.insert([
                     [document_entity["id"]],
                     [document_entity["content"]],
-                    [document_entity["embedding"]],
+                    [document_entity["dense"]],
+                    [document_entity["sparse"]],
+                    [document_entity["summary"]],
                     [document_entity["chunks"]],
                     [document_entity["metadata"]],
                     [document_entity["created_at"]],
@@ -334,7 +387,7 @@ class MilvusVectorStore(VectorStore):
             # 执行稀疏向量搜索
             sparse_results = self.chunks_collection.search(
                 data=[query_vector],
-                anns_field="sparse_bm25",
+                anns_field="sparse",
                 param=sparse_search_params,
                 limit=limit * 2,  # 获取更多结果用于混合排序
                 expr=filter_expr,
@@ -403,7 +456,7 @@ class MilvusVectorStore(VectorStore):
                 doc_expr = f'id in {document_ids}'
                 document_results = self.documents_collection.query(
                     expr=doc_expr,
-                    output_fields=["id", "content", "metadata", "created_at", "modified_at"]
+                    output_fields=["id", "content", "summary", "metadata", "created_at", "modified_at"]
                 )
                 documents = {doc["id"]: doc for doc in document_results}
 
@@ -427,6 +480,7 @@ class MilvusVectorStore(VectorStore):
                     "document": {
                         "id": doc_id,
                         "content": doc_info.get("content", ""),
+                        "summary": doc_info.get("summary", ""),
                         "metadata": doc_info.get("metadata", {}),
                         "created_at": datetime.fromtimestamp(doc_info.get("created_at", 0)),
                         "modified_at": datetime.fromtimestamp(doc_info.get("modified_at", 0))
@@ -512,7 +566,7 @@ class MilvusVectorStore(VectorStore):
             chunk_document_ids = []
             chunk_contents = []
             chunk_denses = []
-            chunk_sparse_bm25 = []
+            chunk_sparses = []
             chunk_summaries = []
             chunk_indices = []
             chunk_metadata_list = []
@@ -524,7 +578,12 @@ class MilvusVectorStore(VectorStore):
                 chunk_ids.append(chunk_id)
                 
                 # 获取分块向量
-                chunk_vector = self.model_client.get_embeddings([chunk])[0]
+                dense_vector = self.model_client.get_embeddings([chunk], embedding_type="dense_vecs")[0]
+                
+                # 预处理文本并获取稀疏向量
+                processed_text = self.text_preprocessor.preprocess(chunk)
+                sparse_vector = self.model_client.get_embeddings([processed_text], embedding_type="sparse_vecs")[0]
+                sparse_vector = self._convert_to_sparse_matrix_format(sparse_vector)
                 
                 # 生成主题概述
                 summary = self.model_client.summarize(chunk)
@@ -532,8 +591,8 @@ class MilvusVectorStore(VectorStore):
                 # 添加到实体列表
                 chunk_document_ids.append(document_id)
                 chunk_contents.append(chunk)
-                chunk_denses.append(chunk_vector)
-                chunk_sparse_bm25.append([0.0] * VECTOR_DIM)  # 临时使用零向量，实际应该使用BM25向量
+                chunk_denses.append(dense_vector)
+                chunk_sparses.append(sparse_vector)
                 chunk_summaries.append(summary)
                 chunk_indices.append(i)
                 chunk_metadata_list.append(metadata or {})
@@ -551,17 +610,30 @@ class MilvusVectorStore(VectorStore):
                 chunk_document_ids,
                 chunk_contents,
                 chunk_denses,
-                chunk_sparse_bm25,
+                chunk_sparses,
                 chunk_summaries,
                 chunk_indices,
                 chunk_metadata_list,
                 chunk_created_ats
             ])
+            
+            # 合并所有 chunks 的摘要并生成文档摘要
+            all_chunk_summaries = "\n\n".join(chunk_summaries)
+
+            # 获取文档级别的向量
+            doc_dense_vector = self.model_client.get_embeddings([all_chunk_summaries], embedding_type="dense_vecs")[0]
+            doc_sparse_vector = self.model_client.get_embeddings([all_chunk_summaries], embedding_type="sparse_vecs")[0]
+
+            doc_summary = self.model_client.summarize(all_chunk_summaries)
 
             # 更新文档内容
             current_time = datetime.now().timestamp()
+            
             update_data = {
                 "content": content,
+                "dense": doc_dense_vector,
+                "sparse": doc_sparse_vector,
+                "summary": doc_summary,
                 "chunks": chunk_ids,
                 "modified_at": current_time
             }
